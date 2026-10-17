@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+DIR="$HOME/glm53-flash"
+source "$DIR/config.sh"
+remote() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$WORKER_HOST" "$@"; }
+state() { docker inspect -f '{{.State.Status}}' glm53-flash 2>/dev/null || true; }
+stop_local() {
+  if docker inspect glm53-flash >/dev/null 2>&1; then
+    docker stop -t 60 glm53-flash >/dev/null
+  fi
+}
+case "${1:-status}" in
+  start)
+    exec 9>"$DIR/control.lock"
+    flock -n 9 || { echo 'Another start/stop is in progress'; exit 1; }
+    if [[ "$(state)" == running ]]; then
+      echo 'GLM container already running. Use glm status or glm restart.'
+      exit 0
+    fi
+    remote 'docker info >/dev/null'
+    docker image inspect "$IMAGE" >/dev/null
+    remote "docker image inspect '$IMAGE' >/dev/null"
+    # Keep DeepSeek containers and weights intact for rollback, but free both GPUs.
+    docker stop -t 60 deepseek-v4-flash-vllm-dspark-1 >/dev/null 2>&1 || true
+    remote 'docker stop -t 60 deepseek-v4-flash-vllm-dspark-1 >/dev/null 2>&1 || true'
+    docker rm glm53-flash >/dev/null 2>&1 || true
+    remote 'if docker inspect glm53-flash >/dev/null 2>&1; then docker stop -t 60 glm53-flash >/dev/null; docker rm glm53-flash >/dev/null; fi'
+    remote 'bash ~/glm53-flash/node.sh 1'
+    if ! bash "$DIR/node.sh" 0; then
+      remote 'docker stop -t 30 glm53-flash' || true
+      exit 1
+    fi
+    echo "GLM starting, ctx=131000. API: http://$(hostname):$PORT/v1"
+    echo 'Use glm wait for readiness, glm logs for startup output.'
+    ;;
+  stop)
+    exec 9>"$DIR/control.lock"
+    flock -n 9 || { echo 'Another start/stop is in progress'; exit 1; }
+    stop_local &
+    pid=$!
+    remote 'if docker inspect glm53-flash >/dev/null 2>&1; then docker stop -t 60 glm53-flash; fi'
+    wait "$pid"
+    echo 'GLM stopped on both nodes.'
+    ;;
+  restart) "$0" stop; "$0" start ;;
+  status)
+    echo 'Head:'
+    docker ps -a --filter name='^/glm53-flash$' --format '{{.Names}} {{.Status}}'
+    echo 'Worker:'
+    remote "docker ps -a --filter name='^/glm53-flash\$' --format '{{.Names}} {{.Status}}'"
+    curl -fsS --max-time 5 "http://127.0.0.1:$PORT/v1/models" || true
+    echo
+    ;;
+  wait)
+    deadline=$((SECONDS + ${2:-3600}))
+    until curl -fsS --max-time 5 "http://127.0.0.1:$PORT/v1/models"; do
+      [[ "$(state)" == running ]] || { docker logs --tail 60 glm53-flash; exit 1; }
+      (( SECONDS < deadline )) || { echo 'Readiness timeout'; exit 1; }
+      sleep 10
+    done
+    echo
+    ;;
+  logs) docker logs --tail 100 -f glm53-flash ;;
+  worker-logs) remote 'docker logs --tail 100 -f glm53-flash' ;;
+  *) echo 'Usage: glm {start|stop|restart|status|wait [seconds]|logs|worker-logs}'; exit 2 ;;
+esac
