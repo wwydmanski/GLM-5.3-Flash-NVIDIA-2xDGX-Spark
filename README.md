@@ -27,8 +27,9 @@ The context is per request, the KV pool is shared among concurrent requests.
 The NVIDIA model-card two-Spark B12X profile is used, with a tuned MTP setup:
 3 draft tokens, probabilistic draft sampling and a BF16 draft lm_head
 (`VLLM_MTP_NVFP4_LM_HEAD=0`). On replayed staging traffic this raised
-position-1 acceptance from 0.72 to 0.86 and decode to 42.0 tok/s vs 37.0
-without speculation (same sampling: MTP2 40.0, MTP4 41.8, MTP5 ~39.5). Change it via `SPEC_CONFIG` / `DOCKER_ARGS` in config.sh.
+position-1 acceptance from 0.72-0.76 (greedy drafting, NVFP4 draft head) to 0.86
+and decode to 42.0 tok/s, vs 37.0 tok/s for MTP2 with greedy drafting on the same
+100 requests (probabilistic drafting: MTP2 40.0, MTP4 41.8, MTP5 ~39.5). Change it via `SPEC_CONFIG` / `DOCKER_ARGS` in config.sh.
 Files: node.sh (launch), runtime.env (kernel/network settings), config.sh
 (image/network/KV budget/speculative config, optional `EXTRA_ARGS` and `MODEL`
 override), glm (two-node lifecycle), safe-start.sh (guarded start).
