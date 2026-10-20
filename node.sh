@@ -8,6 +8,10 @@ IP="$HEAD_IP"
 [[ "$RANK" == 1 ]] && IP="$WORKER_IP"
 extra=()
 [[ "$RANK" == 1 ]] && extra+=(--headless)
+[[ -n "${SPEC_CONFIG:-}" ]] && extra+=(--speculative-config "$SPEC_CONFIG")
+[[ -n "${EXTRA_ARGS:-}" ]] && extra+=($EXTRA_ARGS)
+docker_extra=()
+[[ -n "${DOCKER_ARGS:-}" ]] && docker_extra+=($DOCKER_ARGS)
 exec docker run -d --name glm53-flash --init --restart no \
   --privileged --gpus all --network host --ipc host --shm-size 16g \
   --stop-timeout 60 --ulimit nofile=1048576:1048576 \
@@ -19,7 +23,8 @@ exec docker run -d --name glm53-flash --init --restart no \
   -v "$HOME/.cache/flashinfer:/root/.cache/flashinfer" \
   -v "$HOME/.cache/b12x:/root/.cache/b12x" \
   -v "$HOME/.triton:/root/.triton" \
-  --entrypoint vllm "$IMAGE" serve nvidia/GLM-5.3-Flash-FP4-Local \
+  "${docker_extra[@]}" \
+  --entrypoint vllm "$IMAGE" serve "${MODEL:-nvidia/GLM-5.3-Flash-FP4-Local}" \
   --served-model-name nvidia/GLM-5.3-Flash-FP4-Local \
   --host 0.0.0.0 --port "$PORT" --tensor-parallel-size 2 \
   --mamba-cache-mode align --enable-prefix-caching --enable-chunked-prefill \
@@ -28,7 +33,6 @@ exec docker run -d --name glm53-flash --init --restart no \
   --linear-backend b12x --no-enable-flashinfer-autotune --load-format b12x \
   --max-model-len 131000 --max-num-seqs 4 --max-num-batched-tokens 4096 \
   --kv-cache-memory-bytes "$KV_CACHE_BYTES" \
-  --speculative-config '{"method":"mtp","num_speculative_tokens":5,"moe_backend":"humming","attention_backend":"B12X"}' \
   --reasoning-parser glm45 --tool-call-parser glm47 --enable-auto-tool-choice \
   --gpu-memory-utilization 0.73 --nnodes 2 --node-rank "$RANK" \
   --master-addr "$HEAD_IP" --master-port "$MASTER_PORT" "${extra[@]}"
