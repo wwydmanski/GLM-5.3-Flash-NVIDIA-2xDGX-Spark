@@ -1,6 +1,6 @@
 # GLM 5.3 Flash on the two GX10 nodes
 
-Run on gx10-a55a (both nodes must be booted and reachable):
+Run on a DGX Spark (both nodes must be booted and reachable):
 
 ```sh
 ~/glm53-flash/safe-start.sh   # preferred start, see "Safe start" below
@@ -18,7 +18,7 @@ Containers run detached and survive SSH disconnection. After reboot use `glm
 start` on the head. There is deliberately no independent Docker auto-restart,
 which could start the head without the worker. Stopping affects only this model.
 
-API: http://gx10-a55a:8000/v1
+API: http://host:8000/v1
 Model: nvidia/GLM-5.3-Flash-FP4-Local
 Context: exactly 131000 tokens, FP8 KV, 4 concurrent sequences.
 KV cache budget: 4 GiB per GPU (config.sh), not all free unified RAM.
